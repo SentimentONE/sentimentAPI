@@ -1,61 +1,104 @@
 package com.hackaton_one.sentiment_api.api;
 
+import com.hackaton_one.sentiment_api.api.dto.ApiErrorResponse;
 import com.hackaton_one.sentiment_api.exceptions.ModelAnalysisException;
 import com.hackaton_one.sentiment_api.exceptions.ModelInitializationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.time.LocalDateTime;
 
 /**
  * Handler global para exceções da API.
- * Centraliza o tratamento de exceções e retorna respostas HTTP apropriadas.
+ * Centraliza o tratamento de erros e padroniza as respostas HTTP.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     /**
-     * Trata exceções de inicialização do modelo.
-     * Retorna HTTP 500 pois é um erro do servidor na inicialização.
+     * Trata exceções relacionadas à inicialização do modelo de Data Science.
+     * Retorna HTTP 500 pois representa uma falha interna do servidor.
      */
     @ExceptionHandler(ModelInitializationException.class)
-    public ResponseEntity<Map<String, Object>> handleModelInitializationException(ModelInitializationException e) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("error", "Model Initialization Error");
-        response.put("message", e.getMessage());
-        response.put("timestamp", System.currentTimeMillis());
+    public ResponseEntity<ApiErrorResponse> handleModelInitializationException(
+            ModelInitializationException e) {
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Model Initialization Error",
+                e.getMessage(),
+                LocalDateTime.now()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(response);
     }
 
     /**
-     * Trata exceções durante a análise de sentimento.
-     * Retorna HTTP 400 pois é um erro na análise do conteúdo.
+     * Trata exceções ocorridas durante a análise de sentimento.
+     * Retorna HTTP 400 quando o texto não pode ser analisado corretamente.
      */
     @ExceptionHandler(ModelAnalysisException.class)
-    public ResponseEntity<Map<String, Object>> handleModelAnalysisException(ModelAnalysisException e) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("error", "Analysis Error");
-        response.put("message", e.getMessage());
-        response.put("timestamp", System.currentTimeMillis());
+    public ResponseEntity<ApiErrorResponse> handleModelAnalysisException(
+            ModelAnalysisException e) {
 
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Analysis Error",
+                e.getMessage(),
+                LocalDateTime.now()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(response);
+    }
+
+    /**
+     * Trata erros de validação de entrada (@NotNull, @Size, etc).
+     * Retorna HTTP 400 com mensagem clara sobre o campo inválido.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiErrorResponse> handleValidationException(
+            MethodArgumentNotValidException ex) {
+
+        String message = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .findFirst()
+                .orElse("Erro de validação");
+
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                "Bad Request",
+                message,
+                LocalDateTime.now()
+        );
+
+        return ResponseEntity.badRequest().body(response);
     }
 
     /**
      * Trata exceções genéricas não capturadas.
+     * Retorna HTTP 500 para qualquer erro inesperado.
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(Exception e) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("error", "Internal Server Error");
-        response.put("message", "An unexpected error occurred");
-        response.put("timestamp", System.currentTimeMillis());
+    public ResponseEntity<ApiErrorResponse> handleGenericException(Exception e) {
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        ApiErrorResponse response = new ApiErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "Internal Server Error",
+                "An unexpected error occurred",
+                LocalDateTime.now()
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(response);
     }
 }
-

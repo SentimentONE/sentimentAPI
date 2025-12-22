@@ -1,4 +1,4 @@
-package com.hackaton_one.sentiment_api.api;
+package com.hackaton_one.sentiment_api.api.dto;
 
 /**
  * Resposta de saída da análise de sentimento.
@@ -10,16 +10,16 @@ package com.hackaton_one.sentiment_api.api;
  *   "text": "Este produto é muito bom!"
  * }
  */
-public class SentimentResponse {
+public class SentimentResponseDTO {
 
     private String sentiment;
     private double score;
     private String text;
 
-    public SentimentResponse() {
+    public SentimentResponseDTO() {
     }
 
-    public SentimentResponse(String sentiment, double score, String text) {
+    public SentimentResponseDTO(String sentiment, double score, String text) {
         this.sentiment = sentiment;
         this.score = score;
         this.text = text;

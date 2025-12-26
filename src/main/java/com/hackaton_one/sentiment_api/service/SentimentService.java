@@ -2,6 +2,7 @@ package com.hackaton_one.sentiment_api.service;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
+import com.hackaton_one.sentiment_api.api.dto.SentimentResultDTO;
 import com.hackaton_one.sentiment_api.exceptions.ModelAnalysisException;
 import com.hackaton_one.sentiment_api.exceptions.ModelInitializationException;
 import jakarta.annotation.PostConstruct;
@@ -46,8 +47,13 @@ public class SentimentService {
         }
     }
 
-    // TODO: Add DTO
-    public float[] analyze(String text) {
+    /**
+     * Analisa o sentimento de um texto.
+     * 
+     * @param text Texto a ser analisado
+     * @return SentimentResultDTO com previsao e probabilidade
+     */
+    public SentimentResultDTO analyze(String text) {
         String[] inputData = new String[]{ text };
         long[] shape = new long[]{ 1, 1 };
 
@@ -60,16 +66,15 @@ public class SentimentService {
             try (OrtSession.Result results = session.run(inputs)) {
                 // 6. Extract output
                 String[] labels = (String[]) results.get(0).getValue();
-                String predict = labels[0];
+                String previsao = labels[0];
 
                 @SuppressWarnings("unchecked")
                 List<Map<String, Float>> probsList = (List<Map<String, Float>>) results.get(1).getValue();
 
                 Map<String, Float> mapProbability = probsList.get(0);
-                float probability = mapProbability.get(predict);
+                float probabilidade = mapProbability.get(previsao);
 
-//                return new SentimentResponse(predict, (double) probability);
-                return new float[]{ probability };
+                return new SentimentResultDTO(previsao, probabilidade);
             } catch (Exception e){
                 throw new ModelAnalysisException("Failed to run inference: " + e.getMessage(), e);
             }

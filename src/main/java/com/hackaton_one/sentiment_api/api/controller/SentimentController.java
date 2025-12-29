@@ -1,8 +1,10 @@
 package com.hackaton_one.sentiment_api.api.controller;
 
 import com.hackaton_one.sentiment_api.api.dto.BatchSentimentResponseDTO;
+import com.hackaton_one.sentiment_api.api.dto.SentimentRequestDTO;
 import com.hackaton_one.sentiment_api.api.dto.SentimentResponseDTO;
 import com.hackaton_one.sentiment_api.service.BatchService;
+import com.hackaton_one.sentiment_api.service.SentimentService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -31,9 +33,11 @@ import java.util.Map;
 public class SentimentController {
 
     private final BatchService batchService;
+    private final SentimentService sentimentService;
 
-    public SentimentController(BatchService batchService) {
+    public SentimentController(BatchService batchService, SentimentService sentimentService) {
         this.batchService = batchService;
+        this.sentimentService = sentimentService;
     }
 
     /**
@@ -41,7 +45,7 @@ public class SentimentController {
      */
     @PostMapping
     public ResponseEntity<?> analyzeSentiment(
-            @Valid @RequestBody SentimentResponseDTO request,
+            @Valid @RequestBody SentimentRequestDTO request,
             BindingResult bindingResult) {
         
         try {
@@ -61,8 +65,15 @@ public class SentimentController {
                 return errorResponse(errorMessage, HttpStatus.BAD_REQUEST);
             }
             
+            // Usa o serviço para fazer a análise real
+            var result = sentimentService.analyze(request.text());
+            
             return ResponseEntity.ok(
-                    new SentimentResponseDTO("POSITIVE", 0.87, request.text())
+                    new SentimentResponseDTO(
+                        result.previsao().toUpperCase(),
+                        result.probabilidade(),
+                        request.text()
+                    )
             );
             
         } catch (Exception e) {

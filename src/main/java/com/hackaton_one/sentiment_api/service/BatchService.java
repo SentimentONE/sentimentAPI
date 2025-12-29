@@ -3,6 +3,7 @@ package com.hackaton_one.sentiment_api.service;
 import com.hackaton_one.sentiment_api.api.dto.BatchSentimentResponseDTO;
 import com.hackaton_one.sentiment_api.api.dto.SentimentResponseDTO;
 import com.hackaton_one.sentiment_api.api.dto.SentimentResultDTO;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -17,8 +18,8 @@ import java.util.List;
  */
 @Service
 public class BatchService {
-
-    private static final int MAX_LINES = 100;
+    @Value("${batch.max-lines:100}")
+    private int maxLines;
     
     private final SentimentService sentimentService;
 
@@ -66,7 +67,7 @@ public class BatchService {
                 }
                 
                 // Limite de linhas
-                if (lineCount >= MAX_LINES) {
+                if (lineCount >= maxLines) {
                     break;
                 }
                 

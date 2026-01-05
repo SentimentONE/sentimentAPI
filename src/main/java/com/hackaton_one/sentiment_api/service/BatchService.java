@@ -25,9 +25,11 @@ public class BatchService {
     private int maxLines;
     
     private final SentimentService sentimentService;
+    private final SentimentPersistenceService persistenceService;
 
-    public BatchService(SentimentService sentimentService) {
+    public BatchService(SentimentService sentimentService, SentimentPersistenceService persistenceService) {
         this.sentimentService = sentimentService;
+        this.persistenceService = persistenceService;
     }
 
     /**
@@ -87,7 +89,18 @@ public class BatchService {
                 // Analisa sentimento
                 SentimentResultDTO result = sentimentService.analyze(text);
                 
-                results.add(new SentimentResponseDTO(result.previsao(), result.probabilidade(), text));
+                String sentiment = result.previsao().toUpperCase();
+                double score = result.probabilidade();
+                
+                // Salva a análise no banco de dados
+                try {
+                    persistenceService.saveSentiment(text, sentiment, score);
+                } catch (Exception e) {
+                    log.warn("Erro ao salvar análise no banco (continuando): {}", e.getMessage());
+                }
+                
+                // Garante que o sentimento está em maiúsculas (já vem normalizado do SentimentService)
+                results.add(new SentimentResponseDTO(sentiment, score, text));
                 lineCount++;
             }
         } catch (Exception e) {

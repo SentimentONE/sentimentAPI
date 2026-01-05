@@ -4,13 +4,13 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
 import com.hackaton_one.sentiment_api.api.dto.SentimentResultDTO;
 import com.hackaton_one.sentiment_api.exceptions.ModelAnalysisException;
-import com.hackaton_one.sentiment_api.exceptions.ModelInitializationException;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +28,8 @@ public class SentimentService {
     private OrtEnvironment env;
     private OrtSession session;
 
-    private static final String MODEL_PATH = "models/sentiment_model.onnx";
+    @Value("${sentiment.model.path:models/sentiment_model.onnx}")
+    private String modelPath;
 
     private boolean modelAvailable = false;
 
@@ -44,32 +45,36 @@ public class SentimentService {
     @PostConstruct
     public void init() {
         try {
-            ClassPathResource resource = new ClassPathResource(MODEL_PATH);
-            if (!resource.exists()) {
-                log.debug("Modelo ONNX não encontrado em: " + MODEL_PATH);
-                log.debug("Usando análise simples baseada em palavras-chave para testes.");
+            log.info("Initializing ONNX Runtime...");
+
+            // 1. Validate file existence on disk
+            File modelFile = new File(modelPath);
+            if (!modelFile.exists()) {
+                log.error("CRITICAL: ONNX model file NOT found at: " + modelFile.getAbsolutePath());
+                log.error("The application requires the model file at this specific path to run efficiently.");
                 this.modelAvailable = false;
                 return;
             }
 
-            // 1. Initialize ONNX Runtime environment
+            // 2. Initialize Environment
             this.env = OrtEnvironment.getEnvironment();
 
-            // 2. Options for the session(Optimizations
+            // 3. Set Session Options
             OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
             opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
 
-            byte[] modelBytes = resource.getContentAsByteArray();
+            // 4. Load Model directly from Disk (Zero-Copy / Memory Mapped)
+            // This is crucial for low-RAM environments. It avoids loading a huge byte[] into Java Heap.
+            this.session = env.createSession(modelPath, opts);
 
-            // 3. Load the model
-            this.session = env.createSession(modelBytes, opts);
             this.modelAvailable = true;
-            log.debug("Modelo ONNX carregado com sucesso de: " + MODEL_PATH);
+            log.info("ONNX model loaded successfully from disk: " + modelPath);
+
         } catch (Exception e) {
-            if (e.getMessage().contains("Unsupported model IR version")) {
-                log.error("Incompatibilidade de versão: O modelo ONNX requer atualização do ONNX Runtime ou reconversão para IR versão compatível.");
+            if (e.getMessage() != null && e.getMessage().contains("Unsupported model IR version")) {
+                log.error("Version mismatch: The ONNX model requires a newer ONNX Runtime or needs to be converted.");
             }
-            log.error("Erro ao carregar modelo ONNX: {}", e.getMessage(), e);
+            log.error("Fatal error loading ONNX model: {}", e.getMessage(), e);
             this.modelAvailable = false;
             this.env = null;
             this.session = null;
@@ -179,4 +184,3 @@ public class SentimentService {
         }
     }
 }
-

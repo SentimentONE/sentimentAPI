@@ -10,12 +10,17 @@ COPY pom.xml .
 # Download dependencies with cache mount for faster rebuilds
 RUN --mount=type=cache,target=/root/.m2 mvn dependency:go-offline
 
-COPY src ./src
-
-# Download ONNX model from GitHub
+# Create directory for ONNX model before copying source
 RUN mkdir -p src/main/resources/models
+
+# Download ONNX model from GitHub with cache busting
 ADD --chown=root:root https://github.com/SentimentONE/sentimentIA/raw/refs/heads/main/03-models/sentiment_model.onnx \
     src/main/resources/models/sentiment_model.onnx
+
+COPY src ./src
+
+# Ensure model file is in the correct location
+RUN ls -lh src/main/resources/models/
 
 # Build application with Maven cache
 RUN --mount=type=cache,target=/root/.m2 mvn clean package -DskipTests

@@ -2,15 +2,17 @@ package com.hackaton_one.sentiment_api.service;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
+import com.hackaton_one.sentiment_api.api.dto.SentimentResponseDTO;
 import com.hackaton_one.sentiment_api.api.dto.SentimentResultDTO;
 import com.hackaton_one.sentiment_api.exceptions.ModelAnalysisException;
-import com.hackaton_one.sentiment_api.exceptions.ModelInitializationException;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -28,36 +30,51 @@ public class SentimentService {
     private OrtEnvironment env;
     private OrtSession session;
 
-    private static final String MODEL_PATH = "models/sentiment_model.onnx";
+    @Value("${sentiment.model.path:models/sentiment_model.onnx}")
+    private String modelPath;
 
+    @Getter
     private boolean modelAvailable = false;
+
+    private final SentimentPersistenceService persistenceService;
+
+    public SentimentService(SentimentPersistenceService persistenceService) {
+        this.persistenceService = persistenceService;
+    }
 
     @PostConstruct
     public void init() {
         try {
-            ClassPathResource resource = new ClassPathResource(MODEL_PATH);
-            if (!resource.exists()) {
-                log.debug("Modelo ONNX não encontrado em: " + MODEL_PATH);
-                log.debug("Usando análise simples baseada em palavras-chave para testes.");
+            log.info("Initializing ONNX Runtime...");
+
+            // 1. Validate file existence on disk
+            File modelFile = new File(modelPath);
+            if (!modelFile.exists()) {
+                log.error("CRITICAL: ONNX model file NOT found at: " + modelFile.getAbsolutePath());
+                log.error("The application requires the model file at this specific path to run efficiently.");
                 this.modelAvailable = false;
                 return;
             }
 
-            // 1. Initialize ONNX Runtime environment
+            // 2. Initialize Environment
             this.env = OrtEnvironment.getEnvironment();
 
-            // 2. Options for the session(Optimizations
+            // 3. Set Session Options
             OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
             opts.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT);
 
-            byte[] modelBytes = resource.getContentAsByteArray();
+            // 4. Load Model directly from Disk (Zero-Copy / Memory Mapped)
+            // This is crucial for low-RAM environments. It avoids loading a huge byte[] into Java Heap.
+            this.session = env.createSession(modelPath, opts);
 
-            // 3. Load the model
-            this.session = env.createSession(modelBytes, opts);
             this.modelAvailable = true;
-            log.debug("Modelo ONNX carregado com sucesso de: " + MODEL_PATH);
+            log.info("ONNX model loaded successfully from disk: " + modelPath);
+
         } catch (Exception e) {
-            log.error("Erro ao carregar modelo ONNX: {}", e.getMessage(), e);
+            if (e.getMessage() != null && e.getMessage().contains("Unsupported model IR version")) {
+                log.error("Version mismatch: The ONNX model requires a newer ONNX Runtime or needs to be converted.");
+            }
+            log.error("Fatal error loading ONNX model: {}", e.getMessage(), e);
             this.modelAvailable = false;
             this.env = null;
             this.session = null;
@@ -107,11 +124,6 @@ public class SentimentService {
      * @return SentimentResultDTO com previsao e probabilidade
      */
     public SentimentResultDTO analyze(String text) {
-        // Se o modelo não estiver disponível, usa análise simples
-        if (!modelAvailable) {
-            return analyzeSimple(text);
-        }
-
         String[] inputData = new String[]{ text };
         long[] shape = new long[]{ 1, 1 };
 
@@ -126,10 +138,20 @@ public class SentimentService {
                 String[] labels = (String[]) results.get(0).getValue();
                 String previsao = labels[0];
 
-                @SuppressWarnings("unchecked")
-                List<Map<String, Float>> probsList = (List<Map<String, Float>>) results.get(1).getValue();
+                // Get the probability map - ONNX Runtime returns OnnxSequence containing OnnxMaps
+                Object probsObj = results.get(1).getValue();
 
-                Map<String, Float> mapProbability = probsList.get(0);
+                // Convert to List of OnnxMap
+                @SuppressWarnings("unchecked")
+                List<ai.onnxruntime.OnnxMap> probsList = (List<ai.onnxruntime.OnnxMap>) probsObj;
+
+                // Get the first map
+                ai.onnxruntime.OnnxMap onnxMap = probsList.get(0);
+
+                // Convert OnnxMap to java.util.Map using the getValue method
+                @SuppressWarnings("unchecked")
+                Map<String, Float> mapProbability = (Map<String, Float>) onnxMap.getValue();
+
                 float probabilidade = mapProbability.get(previsao);
                 
                 // Normaliza o sentimento (converte NEUTRO/NEUTRAL para POSITIVO)
@@ -153,48 +175,28 @@ public class SentimentService {
     }
 
     /**
-     * Análise simples baseada em palavras-chave (fallback quando modelo ONNX não está disponível)
+     * Analisa o sentimento de um texto e persiste o resultado no banco de dados.
+     * Este método encapsula toda a lógica de negócio, incluindo:
+     * - Análise do sentimento
+     * - Normalização do resultado
+     * - Persistência no banco de dados
+     *
+     * @param text Texto a ser analisado
+     * @return SentimentResponseDTO pronto para ser retornado pela API
      */
-    private SentimentResultDTO analyzeSimple(String text) {
-        String textLower = text.toLowerCase();
-        
-        String[] positiveWords = {"incrível", "ótimo", "excelente", "bom", "maravilhoso", "recomendo", 
-                                  "adoro", "amo", "perfeito", "fantástico", "sensacional", "gostei", 
-                                  "satisfeito", "feliz", "amor", "adorar", "recomendado"};
-        String[] negativeWords = {"ruim", "péssimo", "horrível", "terrível", "odiei", "detesto", 
-                                   "não gostei", "insatisfeito", "decepcionado", "lixo", "fraco", 
-                                   "desapontado", "triste", "raiva", "ódio"};
-        
-        int positiveCount = 0;
-        int negativeCount = 0;
-        
-        for (String word : positiveWords) {
-            if (textLower.contains(word)) positiveCount++;
+    public SentimentResponseDTO analyzeAndSave(String text) {
+        SentimentResultDTO result = analyze(text);
+
+        String sentiment = result.previsao().toUpperCase();
+        double score = result.probabilidade();
+
+        try {
+            persistenceService.saveSentiment(text, sentiment, score);
+        } catch (Exception e) {
+            log.warn("Erro ao salvar análise no banco (continuando): {}", e.getMessage());
         }
-        
-        for (String word : negativeWords) {
-            if (textLower.contains(word)) negativeCount++;
-        }
-        
-        String previsao;
-        double probabilidade;
-        
-        if (positiveCount > negativeCount) {
-            previsao = "POSITIVO";
-            probabilidade = Math.min(0.7 + (positiveCount * 0.1), 0.95);
-        } else if (negativeCount > positiveCount) {
-            previsao = "NEGATIVO";
-            probabilidade = Math.min(0.7 + (negativeCount * 0.1), 0.95);
-        } else {
-            // Quando empate ou nenhuma palavra encontrada, assume POSITIVO como padrão
-            previsao = "POSITIVO";
-            probabilidade = 0.5 + (Math.random() * 0.2);
-        }
-        
-        // Garante normalização (não deve ser necessário aqui, mas mantém consistência)
-        previsao = normalizeSentiment(previsao);
-        
-        return new SentimentResultDTO(previsao, probabilidade);
+
+        return new SentimentResponseDTO(sentiment, score, text);
     }
 
     @PreDestroy
@@ -207,4 +209,3 @@ public class SentimentService {
         }
     }
 }
-

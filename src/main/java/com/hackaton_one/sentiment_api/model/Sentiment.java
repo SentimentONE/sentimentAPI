@@ -1,6 +1,5 @@
 package com.hackaton_one.sentiment_api.model;
 
-
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.Data;

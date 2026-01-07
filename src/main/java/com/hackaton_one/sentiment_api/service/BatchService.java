@@ -23,7 +23,7 @@ import java.util.List;
 public class BatchService {
     @Value("${batch.max-lines:100}")
     private int maxLines;
-    
+
     private final SentimentService sentimentService;
     private final SentimentPersistenceService persistenceService;
 
@@ -33,31 +33,50 @@ public class BatchService {
     }
 
     /**
+     * Valida o arquivo CSV antes de processar.
+     *
+     * @param file Arquivo a ser validado
+     * @throws IllegalArgumentException se o arquivo for inválido
+     */
+    public void validateCSVFile(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new IllegalArgumentException("CSV file is required");
+        }
+
+        String filename = file.getOriginalFilename();
+        if (filename == null || !filename.toLowerCase().endsWith(".csv")) {
+            throw new IllegalArgumentException("File must have .csv extension");
+        }
+    }
+
+    /**
      * Processa um arquivo CSV contendo textos para análise de sentimento.
-     * 
-     * @param file Arquivo CSV com os textos
+     *
+     * @param file       Arquivo CSV com os textos
      * @param textColumn Nome da coluna com textos (opcional, usa primeira coluna se null)
      * @return BatchSentimentResponseDTO com resultados
      * @throws CsvProcessingException em caso de erro de leitura ou parsing
      */
     public BatchSentimentResponseDTO processCSV(MultipartFile file, String textColumn) {
+        validateCSVFile(file);
+
         List<SentimentResponseDTO> results = new ArrayList<>();
-        
+
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            
+
             String line;
             int textColumnIndex = 0;
             boolean isFirstLine = true;
             int lineCount = 0;
-            
+
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) {
                     continue;
                 }
-                
+
                 String[] columns = parseCSVLine(line);
-                
+
                 // Primeira linha: header
                 if (isFirstLine) {
                     isFirstLine = false;
@@ -66,39 +85,39 @@ public class BatchService {
                         if (textColumnIndex == -1) {
                             log.error("Column '{}' not found in CSV header.", textColumn);
                             throw new IllegalArgumentException(
-                                "Column '" + textColumn + "' not found. Available: " + String.join(", ", columns));
+                                    "Column '" + textColumn + "' not found. Available: " + String.join(", ", columns));
                         }
                     }
                     continue; // Pula header
                 }
-                
+
                 // Limite de linhas
                 if (lineCount >= maxLines) {
                     break;
                 }
-                
+
                 if (textColumnIndex >= columns.length) {
                     continue; // Linha incompleta
                 }
-                
+
                 String text = cleanText(columns[textColumnIndex]);
                 if (text.isEmpty()) {
                     continue;
                 }
-                
+
                 // Analisa sentimento
                 SentimentResultDTO result = sentimentService.analyze(text);
-                
+
                 String sentiment = result.previsao().toUpperCase();
                 double score = result.probabilidade();
-                
+
                 // Salva a análise no banco de dados
                 try {
                     persistenceService.saveSentiment(text, sentiment, score);
                 } catch (Exception e) {
                     log.warn("Erro ao salvar análise no banco (continuando): {}", e.getMessage());
                 }
-                
+
                 // Garante que o sentimento está em maiúsculas (já vem normalizado do SentimentService)
                 results.add(new SentimentResponseDTO(sentiment, score, text));
                 lineCount++;
@@ -107,7 +126,12 @@ public class BatchService {
             log.error("Error processing CSV file: {}", e.getMessage(), e);
             throw new CsvProcessingException("Error processing CSV file: " + e.getMessage(), e);
         }
-        
+
+        // Valida se algum texto foi processado
+        if (results.isEmpty()) {
+            throw new IllegalArgumentException("No valid text found in CSV");
+        }
+
         return new BatchSentimentResponseDTO(results, results.size());
     }
 
@@ -118,10 +142,10 @@ public class BatchService {
         List<String> result = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         boolean inQuotes = false;
-        
+
         for (int i = 0; i < line.length(); i++) {
             char c = line.charAt(i);
-            
+
             if (c == '"') {
                 inQuotes = !inQuotes;
             } else if (c == ',' && !inQuotes) {
@@ -132,7 +156,7 @@ public class BatchService {
             }
         }
         result.add(current.toString());
-        
+
         return result.toArray(new String[0]);
     }
 

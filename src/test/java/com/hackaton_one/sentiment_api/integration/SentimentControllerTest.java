@@ -1,7 +1,9 @@
 package com.hackaton_one.sentiment_api.integration;
 
 import com.hackaton_one.sentiment_api.api.controller.SentimentController;
+import com.hackaton_one.sentiment_api.api.dto.DailyStatisticsDTO;
 import com.hackaton_one.sentiment_api.api.dto.SentimentResultDTO;
+import com.hackaton_one.sentiment_api.api.dto.StatisticsDTO;
 import com.hackaton_one.sentiment_api.repository.SentimentRepository;
 import com.hackaton_one.sentiment_api.service.BatchService;
 import com.hackaton_one.sentiment_api.service.SentimentPersistenceService;
@@ -20,12 +22,13 @@ import java.io.FileWriter;
 import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -329,7 +332,88 @@ public class SentimentControllerTest {
 
 
     /* Test statistics endpoint */
-    // TODO: Implement statistics tests
+    @Nested
+    @DisplayName("Tests for /sentiment/statistics endpoint")
+    class StatisticsTests {
+        @Test
+        void shouldReturn200WhenGettingStatistics() throws Exception {
+            when(statisticsService.getStatistics()).thenReturn(new StatisticsDTO(
+                    2,
+                    1,
+                    1,
+                    50.0,
+                    50.0,
+                    80.0,
+                    60.0,
+                    60.0,
+                    List.of(
+                            new DailyStatisticsDTO(LocalDate.of(2026,1,7), 1, 0, 1),
+                            new DailyStatisticsDTO(LocalDate.of(2026,1,8), 0, 1, 1)
+
+                    )
+            ));
+
+            mockMvc.perform(get("/sentiment/statistics"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.total").value(2))
+                    .andExpect(jsonPath("$.positive").value(1))
+                    .andExpect(jsonPath("$.negative").value(1))
+                    .andExpect(jsonPath("$.positivePercentage").value(50.0))
+                    .andExpect(jsonPath("$.negativePercentage").value(50.0))
+                    .andExpect(jsonPath("$.averageConfidence").value(80.0))
+                    .andExpect(jsonPath("$.positiveAverageConfidence").value(60.0))
+                    .andExpect(jsonPath("$.negativeAverageConfidence").value(60.0))
+                    .andExpect(jsonPath("$.timeline").isArray())
+                    .andExpect(jsonPath("$.timeline.length()").value(2))
+                    .andExpect(jsonPath("$.timeline[0].date").value("2026-01-07"))
+                    .andExpect(jsonPath("$.timeline[0].positive").value(1))
+                    .andExpect(jsonPath("$.timeline[0].negative").value(0))
+                    .andExpect(jsonPath("$.timeline[0].total").value(1))
+                    .andExpect(jsonPath("$.timeline[1].date").value("2026-01-08"))
+                    .andExpect(jsonPath("$.timeline[1].positive").value(0))
+                    .andExpect(jsonPath("$.timeline[1].negative").value(1))
+                    .andExpect(jsonPath("$.timeline[1].total").value(1));
+        }
+
+        @Test
+        void shouldReturn500WhenStatisticsServiceThrowsException() throws Exception {
+            when(statisticsService.getStatistics()).thenThrow(new RuntimeException("Database error"));
+
+            mockMvc.perform(get("/sentiment/statistics"))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.error").exists())
+                    .andExpect(jsonPath("$.message").exists());
+        }
+
+        @Test
+        void shouldReturnZeroStatisticsWhenNoDataExists() throws Exception {
+            when(statisticsService.getStatistics()).thenReturn(new StatisticsDTO(
+                    0,
+                    0,
+                    0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    List.of()
+            ));
+
+            mockMvc.perform(get("/sentiment/statistics"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.total").value(0))
+                    .andExpect(jsonPath("$.positive").value(0))
+                    .andExpect(jsonPath("$.negative").value(0))
+                    .andExpect(jsonPath("$.positivePercentage").value(0.0))
+                    .andExpect(jsonPath("$.negativePercentage").value(0.0))
+                    .andExpect(jsonPath("$.averageConfidence").value(0.0))
+                    .andExpect(jsonPath("$.positiveAverageConfidence").value(0.0))
+                    .andExpect(jsonPath("$.negativeAverageConfidence").value(0.0))
+                    .andExpect(jsonPath("$.timeline").isArray())
+                    .andExpect(jsonPath("$.timeline.length()").value(0));
+        }
+    }
+
     /* Test history endpoint */
     // TODO: Implement history tests
 }

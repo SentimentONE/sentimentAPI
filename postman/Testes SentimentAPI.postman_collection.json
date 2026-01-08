@@ -1,0 +1,66 @@
+{
+	"info": {
+		"_postman_id": "132346d6-90e5-44d4-b820-a812adb8f59b",
+		"name": "Testes SentimentAPI",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "30201890"
+	},
+	"item": [
+		{
+			"name": "cenario positivo",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n  \"text\": \"Eu amei o resultado do hackathon, foi excelente!\",\r\n  \"usuario\": \"TestePositivo\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/sentiment",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"sentiment"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "cenario negativo",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\r\n    \"text\": \"Estou muito irritado com a lentidão do sistema, péssima experiência.\"\r\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/sentiment",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"sentiment"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

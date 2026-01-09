@@ -82,42 +82,6 @@ public class SentimentService {
     }
 
     /**
-     * Normaliza o sentimento retornado pelo modelo.
-     * Converte NEUTRO/NEUTRAL para POSITIVO, mantendo apenas POSITIVO e NEGATIVO.
-     * 
-     * @param previsao Sentimento retornado pelo modelo
-     * @return Sentimento normalizado (POSITIVO ou NEGATIVO)
-     */
-    private String normalizeSentiment(String previsao) {
-        if (previsao == null) {
-            return "POSITIVO";
-        }
-        
-        String previsaoUpper = previsao.toUpperCase().trim();
-        
-        // Se for NEUTRO ou NEUTRAL, converte para POSITIVO
-        if (previsaoUpper.equals("NEUTRO") || previsaoUpper.equals("NEUTRAL")) {
-            return "POSITIVO";
-        }
-        
-        // Mantém POSITIVO, POSITIVE, NEGATIVO, NEGATIVE
-        if (previsaoUpper.equals("POSITIVE")) {
-            return "POSITIVO";
-        }
-        if (previsaoUpper.equals("NEGATIVE")) {
-            return "NEGATIVO";
-        }
-        
-        // Se já estiver em português, retorna como está (ou converte para maiúsculas)
-        if (previsaoUpper.equals("POSITIVO") || previsaoUpper.equals("NEGATIVO")) {
-            return previsaoUpper;
-        }
-        
-        // Por padrão, assume POSITIVO
-        return "POSITIVO";
-    }
-
-    /**
      * Analisa o sentimento de um texto.
      * 
      * @param text Texto a ser analisado
@@ -153,17 +117,30 @@ public class SentimentService {
                 Map<String, Float> mapProbability = (Map<String, Float>) onnxMap.getValue();
 
                 float probabilidade = mapProbability.get(previsao);
-                
-                // Normaliza o sentimento (converte NEUTRO/NEUTRAL para POSITIVO)
-                String previsaoNormalizada = normalizeSentiment(previsao);
-                
-                // Se foi convertido de NEUTRO para POSITIVO, ajusta a probabilidade
-                if (!previsaoNormalizada.equals(previsao.toUpperCase().trim())) {
-                    // Se era NEUTRO, mantém a probabilidade original ou ajusta levemente
-                    probabilidade = (float) Math.max(0.5, probabilidade);
+
+                // Valida o sentimento retornado pelo modelo
+                String previsaoUpper = previsao.toUpperCase().trim();
+
+                // Aceita apenas POSITIVE / NEGATIVE ou POSITIVO / NEGATIVO
+                if (!previsaoUpper.equals("POSITIVE")
+                        && !previsaoUpper.equals("NEGATIVE")
+                        && !previsaoUpper.equals("POSITIVO")
+                        && !previsaoUpper.equals("NEGATIVO")) {
+
+                    log.warn("Sentimento inesperado retornado pelo modelo: {}", previsaoUpper);
+                    throw new ModelAnalysisException(
+                            "Modelo retornou sentimento não suportado: " + previsaoUpper
+                    );
                 }
 
-                return new SentimentResultDTO(previsaoNormalizada, probabilidade);
+                // Padroniza o sentimento para português
+                String sentimentoFinal =
+                        (previsaoUpper.equals("POSITIVE") || previsaoUpper.equals("POSITIVO"))
+                                ? "POSITIVO"
+                                : "NEGATIVO";
+
+                return new SentimentResultDTO(sentimentoFinal, probabilidade);
+
             } catch (Exception e){
                 log.error("Failed to run inference: {}", e.getMessage(), e);
                 throw new ModelAnalysisException("Failed to run inference: " + e.getMessage(), e);
